@@ -1,0 +1,196 @@
+#!/bin/bash
+#
+GLOBAL_ARGS="$@"
+
+##
+# /home/pkworker/.local/lib/python3.10/site-packages/subdivx/cli.py
+# 
+######################################################################
+function die (){
+	if [ -z "$2" ]; then
+		EXITCODE=250
+	else
+		EXITCODE=$2
+	fi
+	echo "$1"
+	exit ${EXITCODE}
+}
+function verboseLog (){
+	if [ -z "$2" ]; then
+		MIN_VERBOSE_OUTPUT=3
+	else
+		MIN_VERBOSE_OUTPUT=$2
+	fi
+	if [ -z "$3" ]; then
+		CURRENT_VERBOSE_LEVEL=0
+	else
+		CURRENT_VERBOSE_LEVEL=$3
+	fi
+
+#	debug
+#		echo "MIN_VERBOSE_OUTPUT:$MIN_VERBOSE_OUTPUT"
+#		echo "CURRENT_VERBOSE_LEVEL:$CURRENT_VERBOSE_LEVEL"
+	
+	if [ "${CURRENT_VERBOSE_LEVEL}" -ge "${MIN_VERBOSE_OUTPUT}" ]; then
+		echo "$1" 
+	fi
+	
+}
+function argValue (){
+	#this function requires a globar variable being defined at the beggining of the script: GLOBAL_ARGS="$@"
+	ARGS_IN_1=$(echo "$1 "| tr ' ' '\n')
+	ARGS_IN_2=$(echo "${GLOBAL_ARGS} "| tr '=' ' '| tr ' ' '\n')
+	echo "${ARGS_IN_2}" | while IFS= read -r each_2
+	do
+		echo "${ARGS_IN_1}" | while IFS= read -r each_1
+		do
+			if [ "${each_1}" = "${each_2}" ]; then
+				verboseLog "comparing: ${each_1} with ${each_2}: match" 3 ${VERBOSE_LEVEL} 
+				OPT=$(echo "${ARGS_IN_2} 	" | grep -e "${each_1}" -A1 | tail -n1)
+				echo $OPT
+				return 1
+			else
+				verboseLog "comparing: ${each_1} with ${each_2}: no match" 3 ${VERBOSE_LEVEL} 
+			fi
+		done || break
+	done
+}
+function argSwitch (){
+	#this function requires a globar variable being defined at the beggining of the script: GLOBAL_ARGS="$@"
+	ARGS_IN_1=$(echo "$1 "| tr ' ' '\n')
+	ARGS_IN_2=$(echo "${GLOBAL_ARGS} "| tr '=' ' '| tr ' ' '\n')
+	OPT=0
+	echo "${ARGS_IN_2}" | while IFS= read -r each_2
+	do
+		echo "${ARGS_IN_1}" | while IFS= read -r each_1
+		do
+			if [ "${each_1}" = "${each_2}" ]; then
+				verboseLog "comparing: ${each_1} with ${each_2}: match" 3 ${VERBOSE_LEVEL} 
+				OPT=$(echo "${ARGS_IN_2} 	" | grep -e "${each_1}" 1>/dev/null 2>/dev/null && echo 1 || echo 0)
+				echo $OPT
+				return 1
+			else
+				verboseLog "comparing: ${each_1} with ${each_2}: no match" 3 ${VERBOSE_LEVEL} 
+			fi
+		done || return 1
+	done || return 1 
+	echo "${OPT}" | rev | cut -d " " -f1 | rev
+}
+
+#function ln_by_title(){
+#	
+#}
+#
+#function ln_by_genre(){
+#	
+#}
+
+function search_google_series(){
+	T=
+	#googleSearch "site:imdb.com" "$1" ""
+}
+
+function search_omdb_nok(){
+	K="$1"
+	V="$2"
+	TARGET_DIR="$3"
+	[ -z $4 ] && JSON="omdb.json" || JSON="$4"
+	curl -s --get 'http://www.omdbapi.com/' --data-urlencode "apikey=a681a336" --data-urlencode "${K}=${V}"  | jq  | tee "${TARGET_DIR}/${JSON}" && return 0 || return 1
+	#echo "curl -s --get 'http://www.omdbapi.com/' --data-urlencode 'apikey=a681a336' --data-urlencode '${K}=${V}'  | jq  | tee '${TARGET_DIR}/${JSON}' && return 0 || return 1"
+}
+
+function search_omdb(){
+	K="$1"
+	V="$2"
+	TARGET_DIR="$3"
+	[ -z $4 ] && JSON="omdb.json" || JSON="$4"
+	curl -s --get 'http://www.omdbapi.com/' --data-urlencode "apikey=a681a336" --data-urlencode "${K}=${V}"  | jq  | tee "${TARGET_DIR}"/"${JSON}" && return 0 || return 1
+}
+
+function trim(){
+	stdin=$(cat -)
+	[ -z "$stdin" ] && echo $1 | awk '{$1=$1};1' || echo "${stdin}" | awk '{$1=$1};1'
+}
+
+function stdize(){
+	cat - | tr -dc '[[:print:]]' 
+}
+
+######################################################################
+[ -z "$1" ] && die "no arguments supplied, try --help" 1 || OMDB="$1"
+HELP=$(argSwitch "-h --help")
+
+if [ "${HELP}" -gt "0" ]; then
+	echo "showing help"
+	die "" 0
+fi
+
+DESTINATION_DIR=$(argValue "-f --movie-file")
+[ -z "${DESTINATION_DIR}" ] && DESTINATION_DIR="."
+
+IS_TYPE=$(stat -c %F ${DESTINATION_DIR} 2>/dev/null)
+[ "${IS_TYPE}" = "directory" ] || die "${DESTINATION_DIR} is not a directory"
+TEST_WRITABLE=$(mktemp -d --suffix=.omdbtmp -p ${DESTINATION_DIR}) || die "Directory:${DESTINATION_DIR} is not writable" 1
+#stat ${TEST_WRITABLE} 1>/dev/null 2>/dev/null && rm -f ${TEST_WRITABLE} || die "Directory:${DESTINATION_DIR} is not writable or another unknown error" 2
+
+THE_MOVIE_PATH="$1"
+THE_MOVIE_FILE=$(basename "$1")
+THE_MOVIE_DIR=$(dirname "$1")
+
+#echo "THE_MOVIE_PATH:$THE_MOVIE_PATH"
+#echo "THE_MOVIE_FILE:$THE_MOVIE_FILE"
+#echo "THE_MOVIE_DIR:$THE_MOVIE_DIR"
+
+THE_MOVIE_FILE_IN_ROWS=$(echo "${THE_MOVIE_FILE}" | tr -s -c '[:alnum:]' '\n' |tr -s [:space:] '\n')
+#echo "THE_MOVIE_FILE_IN_ROWS:${THE_MOVIE_FILE_IN_ROWS}"
+#ANY_SYMBOL=$(echo "${THE_MOVIE_FILE}" | grep -oP '[\(|\)|\[|\]]' |awk '{$1=$1};1' | head -c1)
+THE_STOP_WORDS="avi|mkv|mp4|mpg|m4v|ogv|vob|3gp|part|temp|tmp|1080i|1080p|1080p1080|10bit|1280x720|1920x1080|360p|368p|480|480p|576p|720i|720p|bdrip|brrip|bdscr|bluray|blurayrip|cam|dl|dsrdsrip|dvb|dvdrip|dvdripdvd|dvdscr|hdtv|hr|ppvrip|preair|r5|rc|sdtvpdtv|tc|tvrip|web|web-dl|web-dlwebdl|webrip|workprint2hd|adrenaline|amnz|asap|axxo|compulsion|crimson|ctrlhd|ctrlhd|ctu|dimension|ebp|ettv|eztv|fanta|fov|fqm|ftv|immerse|internal|ion10|loki|lol|mement|notv|sfm|sparks|turbo|xvid|x264|h264|x265"
+MOVIE_EXTENSIONS="avi|mkv|mp4|mpg|m4v|ogv|vob|3gp|flv"
+
+GUESS_EXT=$(echo "${THE_MOVIE_FILE_IN_ROWS}" | tail -n1)
+
+GUESS_NAME_1_HELPER=$(echo "${THE_MOVIE_FILE_IN_ROWS}" | egrep -ni "${THE_STOP_WORDS}" | head -n1 | cut -d ":" -f1)
+GUESS_NAME_1=$(echo "${THE_MOVIE_FILE_IN_ROWS}" | head -n ${GUESS_NAME_1_HELPER} | head -n -1| tr '\n' ' ')
+echo "GUESS_NAME_1:${GUESS_NAME_1}"
+GUESS_SEASON_1=$(echo "${GUESS_NAME_1}"  | grep -i -oP "s[0-9]+|season.?[0-9]+")
+echo "GUESS_SEASON_1:$GUESS_SEASON_1"
+GUESS_SEASON_1_NUM=$(echo "${GUESS_SEASON_1}" | grep -oP '[0-9]+' | sed 's/^0*//g')
+echo "GUESS_SEASON_1_NUM:$GUESS_SEASON_1_NUM"
+GUESS_EPISODE_1=$(echo "${GUESS_NAME_1}" | grep -i -oP "e[0-9]+|ep\.?\ ?[0-9]+")
+echo "GUESS_EPISODE_1:$GUESS_EPISODE_1"
+GUESS_EPISODE_1_NUM=$(echo "${GUESS_EPISODE_1}" | grep -oP '[0-9]+' | sed 's/^0*//g')
+echo "GUESS_EPISODE_1_NUM:$GUESS_EPISODE_1_NUM"
+
+GUESS_NAME_2_HELPER=$(echo "${THE_MOVIE_FILE_IN_ROWS}" | egrep -ni "${GUESS_SEASON_1}.*${GUESS_EPISODE_1}" | head -n1 | cut -d ":" -f1)
+GUESS_NAME_2=$(echo "${THE_MOVIE_FILE_IN_ROWS}" | head -n ${GUESS_NAME_2_HELPER} | head -n -1| tr '\n' ' ')
+echo "${GUESS_NAME_2}"
+google_search="site:imdb.com ${GUESS_NAME_2} S${GUESS_SEASON_1_NUM}.E${GUESS_EPISODE_1_NUM}"
+TT=$(googleSearch ${google_search} | grep -oP '/tt[0-9]+' | head -n1 | cut -d "/" -f2)
+[ -z "${TT}" ] && die "Finished without results for: ${GUESS_NAME_2} - Season ${GUESS_SEASON_1_NUM} - Episode ${GUESS_EPISODE_1_NUM}" 10
+[ -n "${TT}" ] && search_omdb "i" "${TT}" "${TEST_WRITABLE}" 
+TITLE=$(jq -r '.Title' "${TEST_WRITABLE}/omdb.json")
+YEAR=$(jq -r '.Year' "${TEST_WRITABLE}/omdb.json")
+MAIN_TT=$(jq -r '.seriesID' "${TEST_WRITABLE}/omdb.json")
+[ -n ${MAIN_TT} ] && stat .main_tt 1>/dev/null 2>/dev/null || mkdir .main_tt 
+stat .main_tt/${MAIN_TT}.json 1>/dev/null 2>/dev/null || search_omdb "i" "${MAIN_TT}" ".main_tt" "${MAIN_TT}.json"
+MAIN_TITLE=$(jq -r '.Title' ".main_tt/${MAIN_TT}.json")
+S_LEAD_ZERO=$(printf "%02d" ${GUESS_SEASON_1_NUM})
+E_LEAD_ZERO=$(printf "%02d" ${GUESS_SEASON_1_NUM})
+
+
+MAIN_TITLE_STD=$( echo "${MAIN_TITLE}" | stdize | tr -c '[:alnum:]' '_')
+TITLE_STD=$( echo "${TITLE}" | stdize  | tr -c '[:alnum:]' '_')
+DIR_TEMPLATE_NAME=$( echo "${MAIN_TITLE_STD}-S${S_LEAD_ZERO}E${E_LEAD_ZERO}-${TITLE_STD}")
+MOVIE_TEMPLATE_NAME=$( echo "${TITLE_STD}-S${S_LEAD_ZERO}E${E_LEAD_ZERO}" | tr -c '[:alnum:]' '_')
+MOVIE_TEMPLATE_NAME="${MOVIE_TEMPLATE_NAME}.${GUESS_EXT}"
+
+
+pwd
+mv "${TEST_WRITABLE}" "${DIR_TEMPLATE_NAME}"
+echo mv "${TEST_WRITABLE}" "${DIR_TEMPLATE_NAME}"
+mv "${THE_MOVIE_PATH}" "${DIR_TEMPLATE_NAME}/"
+echo mv ${THE_MOVIE_PATH} ${DIR_TEMPLATE_NAME}/
+cd "${DIR_TEMPLATE_NAME}/"
+pwd
+opensub-get -l spa "${THE_MOVIE_FILE}"
+exit

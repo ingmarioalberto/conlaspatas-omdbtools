@@ -1,0 +1,29 @@
+#!/bin/bash
+OMDB="$1"
+FULL_DNAME="$(dirname ${OMDB})"
+DNAME="$(basename ${FULL_DNAME})"
+
+
+SAFE_DNAME=$(printf '%q' "${DNAME}")
+WORDS=$(echo "${DNAME}" | tr -c '[:alnum:]' ' ' | tr -s ' '|tr ' ' '\n' )
+DYEAR=$(echo "${WORDS}" | grep -Eo '\b(((19|20)[0-9][0-9])|2100)'|awk '{$1=$1};1')
+
+#echo "OMDB:$OMDB"
+#echo -ne "$DNAME"
+TITLE=$(cat "${OMDB}" | jq -r '.Title')
+YEAR=$(cat "${OMDB}" | jq -r '.Year'| grep -oP '[0-9][0-9][0-9][0-9]')
+
+#compare filenames
+
+
+#compare year
+#if [ "${DYEAR}" = "${YEAR}" ]; then
+#  YC="OK"
+#else
+#  YC="NO"
+#fi
+
+PROPOSED_DNAME=$(echo "${TITLE} (${YEAR})")
+PROPOSED_DNAME_CONV=$(echo "${PROPOSED_DNAME}"| tr -c '[:alnum:][:punct:]' '_' | sed "s/'//g" | sed 's/"//g;s/`//g;s/:/_/g;s/;/_/g;s/,/_/g;s/_$//g;s/\//-/g;s/__*/_/g')
+#echo -e "->${PROPOSED_DNAME_CONV}->${YC}"
+rename $2 "s/${SAFE_DNAME}/${PROPOSED_DNAME_CONV}/g" "${FULL_DNAME}"
