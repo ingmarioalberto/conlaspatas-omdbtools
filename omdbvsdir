@@ -1,17 +1,157 @@
 #!/bin/bash
+# REQUIRED MISC FUNCTIONS 
+GLOBAL_ARGS="$@"
+
+function die (){
+	if [ -z "$2" ]; then
+		EXITCODE=250
+	else
+		EXITCODE=$2
+	fi
+	echo "$1"
+	exit ${EXITCODE}
+}
+function verboseLog (){
+	if [ -z "$2" ]; then
+		MIN_VERBOSE_OUTPUT=3
+	else
+		MIN_VERBOSE_OUTPUT=$2
+	fi
+	if [ -z "$3" ]; then
+		CURRENT_VERBOSE_LEVEL=0
+	else
+		CURRENT_VERBOSE_LEVEL=$3
+	fi
+
+#	debug
+#		echo "MIN_VERBOSE_OUTPUT:$MIN_VERBOSE_OUTPUT"
+#		echo "CURRENT_VERBOSE_LEVEL:$CURRENT_VERBOSE_LEVEL"
+	
+	if [ "${CURRENT_VERBOSE_LEVEL}" -ge "${MIN_VERBOSE_OUTPUT}" ]; then
+		echo "$1" 
+	fi	
+}
+
+function argValue (){
+	#this function requires a globar variable being defined at the beggining of the script: GLOBAL_ARGS="$@"
+	for each_2 in "${GLOBAL_ARGS}"
+	do
+		for each_1 in "$@"
+		do
+			echo "${each_1} vs ${each_2}"
+			if [ "${each_1}" = "${each_2}" ]; then
+				verboseLog "comparing: ${each_1} with ${each_2}: match" 3 ${VERBOSE_LEVEL} 
+				OPT=$(echo "${ARGS_IN_2} 	" | grep -e "${each_1}" -A1 | tail -n1)
+				echo $OPT
+				return 1
+			fi
+		done || return 1
+	done
+}
+
+function argSwitch (){
+	#this function requires a globar variable being defined at the beggining of the script: GLOBAL_ARGS="$@"
+	OPT=0
+	echo "GLOBAL:${GLOBAL_ARGS}"
+	for each_2 in ${GLOBAL_ARGS}
+	do
+		for each_1 in $@
+		do
+			echo "${each_1} vs ${each_2}"
+			if [ "${each_1}" = "${each_2}" ]; then
+				OPT=$(echo "${ARGS_IN_2} 	" | grep -e "${each_1}" 1>/dev/null 2>/dev/null && echo 1 || echo 0)
+				echo $OPT
+				return 1
+			fi
+		done || return 1
+	done || return 1
+}
+
+function testargs(){
+	#echo "${GLOBAL_ARGS}" | xargs -n1 echo
+	echo "${GLOBAL_ARGS}" | xargs -0 echo
+
+#	for each_2 in "${GLOBAL_ARGS}"
+#	do
+#		for each_1 in $*
+#		do
+#			echo "${each_1} vs ${each_2}"
+#		done
+#	done
+}
+
+########################
+# PROGRAM ACTIONS
+testargs "v verbose"
+
+exit
+echo "VERBOSE_LEVEL:${VERBOSE_LEVEL}"
+
+function ACTION_GET_PARENT_DIR(){
+	echo $(dirname "${1}")
+}
+
+function ACTION_VERIFY_OMDB(){
+	OMDB="$1"
+	stat "${OMDB}" 1>/dev/null 2>/dev/null || die "OMDB input file not exists" 11
+	jq . "${OMDB}" 1>/dev/null || die "OMDB input file is not json" 12	
+	return 0
+}
+####
+#PROGRAM START
 OMDB="$1"
-FULL_DNAME="$(dirname ${OMDB})"
+ACTION_VERIFY_OMDB "$OMDB"
+PARENT_FULL_DIR=$(ACTION_GET_PARENT_DIR "${OMDB}")
+echo "PARENT_FULL_DIR=${PARENT_FULL_DIR}"
+PARENT_OF_PARENT_FULL_DIR=$(ACTION_GET_PARENT_DIR "${PARENT_FULL_DIR}")
+echo "PARENT_OF_PARENT_FULL_DIR=${PARENT_OF_PARENT_FULL_DIR}"
+
+#GET INFO FROM json
+TITLE=$(jq -r '.Title' "${OMDB}")
+YEAR=$(jq -r '.Year' "${OMDB}"| grep -oP '^[0-9][0-9][0-9][0-9]')
+TYPE=$(jq -r '.Type' "${OMDB}")
+#
+
+#COMAPRE TYPE TO GET THE FORMAT OF THE DIRECTORY NAME (TEMPLATE)
+case "${TYPE}" in
+
+  "movie")
+    TEMPLATE_DIRNAME="%TITLE%-(%YEAR%)"
+    ;;
+
+  "episode")
+    TEMPLATE_DIRNAME="%SERIES_TITLE%-S%SEASON%E%EPISODE%-%TITLE"
+    #IF EPISODE GET EXTRA DATA
+		SEASON=$(jq -r '.Season' "${OMDB}")
+		EPISODE=$(jq -r '.Episode' "${OMDB}")
+      
+    ;;
+
+  *)
+    echo "omdb is not movie nor episode"
+    exit 1
+    ;;
+esac
+echo "TEMPLATE_DIRNAME:${TEMPLATE_DIRNAME}"
+
+#STANDARIZE DATA
+STD_TITLE=$(echo "${TITLE}"| tr -s ' ' '_' | tr -c '[:alnum:]()._-' '_')
+STD_YEAR=$(echo "${YEAR}"| tr -s ' ' '_' | tr -c '[:alnum:]()._-' '_')
+STD_SEASON=$(echo "${SEASON}" | grep -oP '[0-9]+' | sed 's/^0*//g' )
+STD_EPISODE=$(echo "${EPISODE}" | grep -oP '[0-9]+' | sed 's/^0*//g' )
+
+
+exit
+echo "FULL_DNAME:$FULL_DNAME"
 DNAME="$(basename ${FULL_DNAME})"
-
-
+echo "DNAME:$DNAME"
 SAFE_DNAME=$(printf '%q' "${DNAME}")
+echo "SAFE_DNAME:$SAFE_DNAME"
 WORDS=$(echo "${DNAME}" | tr -c '[:alnum:]' ' ' | tr -s ' '|tr ' ' '\n' )
 DYEAR=$(echo "${WORDS}" | grep -Eo '\b(((19|20)[0-9][0-9])|2100)'|awk '{$1=$1};1')
-
+exit
 #echo "OMDB:$OMDB"
 #echo -ne "$DNAME"
-TITLE=$(cat "${OMDB}" | jq -r '.Title')
-YEAR=$(cat "${OMDB}" | jq -r '.Year'| grep -oP '[0-9][0-9][0-9][0-9]')
 
 #compare filenames
 
@@ -26,4 +166,4 @@ YEAR=$(cat "${OMDB}" | jq -r '.Year'| grep -oP '[0-9][0-9][0-9][0-9]')
 PROPOSED_DNAME=$(echo "${TITLE} (${YEAR})")
 PROPOSED_DNAME_CONV=$(echo "${PROPOSED_DNAME}"| tr -c '[:alnum:][:punct:]' '_' | sed "s/'//g" | sed 's/"//g;s/`//g;s/:/_/g;s/;/_/g;s/,/_/g;s/_$//g;s/\//-/g;s/__*/_/g')
 #echo -e "->${PROPOSED_DNAME_CONV}->${YC}"
-rename $2 "s/${SAFE_DNAME}/${PROPOSED_DNAME_CONV}/g" "${FULL_DNAME}"
+echo rename $2 "s/${FULL_DNAME}/${PROPOSED_DNAME_CONV}/g" "${FULL_DNAME}"

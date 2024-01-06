@@ -166,7 +166,7 @@ GUESS_NAME_2=$(echo "${THE_MOVIE_FILE_IN_ROWS}" | head -n ${GUESS_NAME_2_HELPER}
 echo "${GUESS_NAME_2}"
 google_search="site:imdb.com ${GUESS_NAME_2} S${GUESS_SEASON_1_NUM}.E${GUESS_EPISODE_1_NUM}"
 TT=$(googleSearch ${google_search} | grep -oP '/tt[0-9]+' | head -n1 | cut -d "/" -f2)
-[ -z "${TT}" ] && die "Finished without results for: ${GUESS_NAME_2} - Season ${GUESS_SEASON_1_NUM} - Episode ${GUESS_EPISODE_1_NUM}" 10
+[ -z "${TT}" ] && die "Finished without results for: ${GUESS_NAME_2} - Season ${GUESS_SEASON_1_NUM} - Episode ${GUESS_EPISODE_1_NUM}" 10 
 [ -n "${TT}" ] && search_omdb "i" "${TT}" "${TEST_WRITABLE}" 
 TITLE=$(jq -r '.Title' "${TEST_WRITABLE}/omdb.json")
 YEAR=$(jq -r '.Year' "${TEST_WRITABLE}/omdb.json")
@@ -175,7 +175,7 @@ MAIN_TT=$(jq -r '.seriesID' "${TEST_WRITABLE}/omdb.json")
 stat .main_tt/${MAIN_TT}.json 1>/dev/null 2>/dev/null || search_omdb "i" "${MAIN_TT}" ".main_tt" "${MAIN_TT}.json"
 MAIN_TITLE=$(jq -r '.Title' ".main_tt/${MAIN_TT}.json")
 S_LEAD_ZERO=$(printf "%02d" ${GUESS_SEASON_1_NUM})
-E_LEAD_ZERO=$(printf "%02d" ${GUESS_SEASON_1_NUM})
+E_LEAD_ZERO=$(printf "%02d" ${GUESS_EPISODE_1_NUM})
 
 
 MAIN_TITLE_STD=$( echo "${MAIN_TITLE}" | stdize | tr -c '[:alnum:]' '_')
