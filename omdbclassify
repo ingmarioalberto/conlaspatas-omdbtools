@@ -1,0 +1,325 @@
+#!/bin/bash
+#
+GLOBAL_ARGS="$@"
+######################################################################
+get_relative_path() {
+    from="$1"
+    to="$2"
+
+    # Normalizar las rutas eliminando las barras diagonales finales
+    from="${from%/}"
+    to="${to%/}"
+
+    # Dividir las rutas en componentes
+    IFS="/" read -ra from_parts <<< "$from"
+    IFS="/" read -ra to_parts <<< "$to"
+
+    # Eliminar partes comunes entre las rutas
+    while [[ "${from_parts[0]}" == "${to_parts[0]}" ]]; do
+        from_parts=("${from_parts[@]:1}")
+        to_parts=("${to_parts[@]:1}")
+    done
+
+    # Calcular el nivel de directorios ascendentes necesarios para llegar desde la ruta de origen a la raíz
+    up_levels="${#from_parts[@]}"
+    up_dirs=$(printf "../%.0s" $(seq 1 "$up_levels"))
+
+    # Construir la ruta relativa agregando niveles ascendentes y la ruta restante
+    IFS="/" relative_path="$up_dirs${to_parts[*]}"
+
+    echo "$relative_path"
+}
+
+function die (){
+	if [ -z "$2" ]; then
+		EXITCODE=250
+	else
+		EXITCODE=$2
+	fi
+	echo "$1"
+	exit ${EXITCODE}
+}
+function verboseLog (){
+	if [ -z "$2" ]; then
+		MIN_VERBOSE_OUTPUT=3
+	else
+		MIN_VERBOSE_OUTPUT=$2
+	fi
+	if [ -z "$3" ]; then
+		CURRENT_VERBOSE_LEVEL=0
+	else
+		CURRENT_VERBOSE_LEVEL=$3
+	fi
+
+#	debug
+#		echo "MIN_VERBOSE_OUTPUT:$MIN_VERBOSE_OUTPUT"
+#		echo "CURRENT_VERBOSE_LEVEL:$CURRENT_VERBOSE_LEVEL"
+	
+	if [ "${CURRENT_VERBOSE_LEVEL}" -ge "${MIN_VERBOSE_OUTPUT}" ]; then
+		echo "$1" 
+	fi
+	
+}
+function argValue (){
+	#this function requires a globar variable being defined at the beggining of the script: GLOBAL_ARGS="$@"
+	ARGS_IN_1=$(echo "$1 "| tr ' ' '\n')
+	ARGS_IN_2=$(echo "${GLOBAL_ARGS} "| tr '=' ' '| tr ' ' '\n')
+	echo "${ARGS_IN_2}" | while IFS= read -r each_2
+	do
+		echo "${ARGS_IN_1}" | while IFS= read -r each_1
+		do
+			if [ "${each_1}" = "${each_2}" ]; then
+				verboseLog "comparing: ${each_1} with ${each_2}: match" 3 ${VERBOSE_LEVEL} 
+				OPT=$(echo "${ARGS_IN_2} 	" | grep -e "${each_1}" -A1 | tail -n1)
+				echo $OPT
+				return 1
+			else
+				verboseLog "comparing: ${each_1} with ${each_2}: no match" 3 ${VERBOSE_LEVEL} 
+			fi
+		done || break
+	done
+}
+function argSwitch (){
+	#this function requires a globar variable being defined at the beggining of the script: GLOBAL_ARGS="$@"
+	ARGS_IN_1=$(echo "$1 "| tr ' ' '\n')
+	ARGS_IN_2=$(echo "${GLOBAL_ARGS} "| tr '=' ' '| tr ' ' '\n')
+	OPT=0
+	echo "${ARGS_IN_2}" | while IFS= read -r each_2
+	do
+		echo "${ARGS_IN_1}" | while IFS= read -r each_1
+		do
+			if [ "${each_1}" = "${each_2}" ]; then
+				verboseLog "comparing: ${each_1} with ${each_2}: match" 3 ${VERBOSE_LEVEL} 
+				OPT=$(echo "${ARGS_IN_2} 	" | grep -e "${each_1}" 1>/dev/null 2>/dev/null && echo 1 || echo 0)
+				echo $OPT
+				return 1
+			else
+				verboseLog "comparing: ${each_1} with ${each_2}: no match" 3 ${VERBOSE_LEVEL} 
+			fi
+		done || return 1
+	done || return 1 
+	echo "${OPT}" | rev | cut -d " " -f1 | rev
+}
+
+#function ln_by_title(){
+#	
+#}
+#
+#function ln_by_genre(){
+#	
+#}
+
+
+
+######################################################################
+[ -z "$1" ] && die "no arguments supplied, try --help" 1 || OMDB="$1"
+HELP=$(argSwitch "-h --help")
+
+if [ "${HELP}" -gt "0" ]; then
+	echo "showing help"
+	die "" 0
+fi
+
+DESTINATION_DIR=$(argValue "-d --dest-dir")
+[ -z "${DESTINATION_DIR}" ] && die "no -d | --dest-dir supplied, try --help" 1
+
+IS_TYPE=$(stat -c %F ${DESTINATION_DIR} 2>/dev/null)
+[ "${IS_TYPE}" = "directory" ] || die "${DESTINATION_DIR} is not a directory"
+TEST_WRITABLE=$(mktemp --suffix=.omdbtmp -p ${DESTINATION_DIR}) || die "Directory:${DESTINATION_DIR} is not writable" 1
+stat ${TEST_WRITABLE} 1>/dev/null 2>/dev/null && rm -f ${TEST_WRITABLE} || die "Directory:${DESTINATION_DIR} is not writable or another unknown error" 2
+
+
+THE_MOVIE_DIRECTORY=$(argValue "-m --movie-dir")
+[ -z "${THE_MOVIE_DIRECTORY}" ] && die "no -m | --movie-dir supplied, try --help" 1
+
+IS_TYPE=$(stat -c %F ${THE_MOVIE_DIRECTORY} 2>/dev/null)
+[ "${IS_TYPE}" = "directory" ] || die "${THE_MOVIE_DIRECTORY} is not a directory"
+
+#get_relative_path "${DESTINATION_DIR}" "${THE_MOVIE_DIRECTORY}"
+
+
+#YEAR=$(cat "${OMDB}" | jq -r '.Year'| grep -oP '^[0-9][0-9][0-9][0-9]')
+#GENRES=$(cat "${OMDB}" | jq -r '.Genre')
+
+#START_LETTER=$(echo ${TITLE} | tr -c '[:alnum:]' | tr -s ' ' | awk '{$1=$1};1' | head -c1 | tr '[:lower:]' '[:upper:]')
+
+#By_Title
+
+#By_AZ_09  By_Genre  By_Rating  By_Title
+
+#cd "${DESTINATION_DIR}/"
+#mkdir "{By_AZ_09,By_Genre,By_Rating,By_Title,By_Year}" 1>/dev/null 2>/dev/null
+
+function ln_By_Title(){
+	TARGET_RDIR="By_Title"
+	THE_MOVIE_DIRECTORY="$1"
+	DESTINATION_DIR="$2"
+	#
+	OMDB="${THE_MOVIE_DIRECTORY}/omdb.json"
+	stat ${OMDB} 1>/dev/null 2>/dev/null || die "omdb.json not found in ${THE_MOVIE_DIRECTORY}" 1
+	RELPATH=$(get_relative_path "${DESTINATION_DIR}/${TARGET_RDIR}" "${THE_MOVIE_DIRECTORY}")
+	#echo "CWD:DESTINATION_DIR/TARGET_RDIR:${DESTINATION_DIR}/${TARGET_RDIR}"
+	#echo "THE_MOVIE_DIRECTORY:${THE_MOVIE_DIRECTORY}"
+	#echo "RELPATH:${RELPATH}"
+#
+	mkdir -p ${DESTINATION_DIR}/${TARGET_RDIR} 1>/dev/null 2>/dev/null
+	cd "${DESTINATION_DIR}/${TARGET_RDIR}" || die "TARGET_RDIR cannot change CWD:${DESTINATION_DIR}/${TARGET_RDIR}" 31
+	NONO=$(argSwitch "-n --nono")
+	if [ "${NONO}" -gt "0" ]; then
+		echo "CWD should be: ${DESTINATION_DIR}/${TARGET_RDIR} "
+		echo "ln -s ${RELPATH} ./"
+	else
+		ln -s ${RELPATH} ./
+	fi
+}
+
+function ln_By_Letter(){	
+	THE_MOVIE_DIRECTORY="$1"
+	DESTINATION_DIR="$2"
+	#
+	OMDB="${THE_MOVIE_DIRECTORY}/omdb.json"
+	TITLE=$(cat "${OMDB}" | jq -r '.Title')
+	START_LETTER=$(echo ${TITLE} | tr -s -c '[:alnum:]' | tr -s ' ' | awk '{$1=$1};1' | head -c1 | tr '[:lower:]' '[:upper:]')
+	TARGET_RDIR="By_AZ_09/${START_LETTER}"
+
+	#verify omdb exists
+	stat ${OMDB} 1>/dev/null 2>/dev/null || die "omdb.json not found in ${THE_MOVIE_DIRECTORY}" 1
+	#get the (magic) relative path
+	RELPATH=$(get_relative_path "${DESTINATION_DIR}/${TARGET_RDIR}" "${THE_MOVIE_DIRECTORY}")
+	#echo "CWD:DESTINATION_DIR/TARGET_RDIR:${DESTINATION_DIR}/${TARGET_RDIR}"
+	#echo "THE_MOVIE_DIRECTORY:${THE_MOVIE_DIRECTORY}"
+	#echo "RELPATH:${RELPATH}"
+#
+	mkdir -p ${DESTINATION_DIR}/${TARGET_RDIR} 1>/dev/null 2>/dev/null
+	cd "${DESTINATION_DIR}/${TARGET_RDIR}" || die "TARGET_RDIR cannot change CWD:${DESTINATION_DIR}/${TARGET_RDIR}" 31
+	NONO=$(argSwitch "-n --nono")
+	if [ "${NONO}" -gt "0" ]; then
+		echo "CWD should be: ${DESTINATION_DIR}/${TARGET_RDIR} "
+		echo "ln -s ${RELPATH} ./"
+	else
+		ln -s ${RELPATH} ./
+	fi
+}
+
+function ln_By_Year(){
+	THE_MOVIE_DIRECTORY="$1"
+	DESTINATION_DIR="$2"
+	#
+	OMDB="${THE_MOVIE_DIRECTORY}/omdb.json"
+	stat ${OMDB} 1>/dev/null 2>/dev/null || die "omdb.json not found in ${THE_MOVIE_DIRECTORY}" 1
+	YEAR=$(cat "${OMDB}" | jq -r '.Year')
+	TARGET_RDIR="By_Year/${YEAR}"
+	RELPATH=$(get_relative_path "${DESTINATION_DIR}/${TARGET_RDIR}" "${THE_MOVIE_DIRECTORY}")
+	#echo "CWD:DESTINATION_DIR/TARGET_RDIR:${DESTINATION_DIR}/${TARGET_RDIR}"
+	#echo "THE_MOVIE_DIRECTORY:${THE_MOVIE_DIRECTORY}"
+	#echo "RELPATH:${RELPATH}"
+#
+	mkdir -p ${DESTINATION_DIR}/${TARGET_RDIR} 1>/dev/null 2>/dev/null
+	cd "${DESTINATION_DIR}/${TARGET_RDIR}" || die "TARGET_RDIR cannot change CWD:${DESTINATION_DIR}/${TARGET_RDIR}" 31
+	NONO=$(argSwitch "-n --nono")
+	if [ "${NONO}" -gt "0" ]; then
+		echo "CWD should be: ${DESTINATION_DIR}/${TARGET_RDIR} "
+		echo "ln -s ${RELPATH} ./"
+	else
+		ln -s ${RELPATH} ./
+	fi
+}
+
+function ln_By_Rating(){
+	THE_MOVIE_DIRECTORY="$1"
+	DESTINATION_DIR="$2"
+	#
+	OMDB="${THE_MOVIE_DIRECTORY}/omdb.json"
+	stat ${OMDB} 1>/dev/null 2>/dev/null || die "omdb.json not found in ${THE_MOVIE_DIRECTORY}" 1
+	RATING_IMDB=$(cat ${OMDB} | jq '.Ratings[] | select(.Source=="Internet Movie Database")' | jq -r '.Value' | cut -d "/" -f1 |cut -d "." -f1)
+	if [ "${RATING_IMDB}" -ge "0" ]; then
+		RATING=${RATING_IMDB}
+	else
+		RATING="imdb-not-rated"
+	fi
+	TARGET_RDIR="By_Rate/${RATING}"
+	RELPATH=$(get_relative_path "${DESTINATION_DIR}/${TARGET_RDIR}" "${THE_MOVIE_DIRECTORY}")
+	#echo "CWD:DESTINATION_DIR/TARGET_RDIR:${DESTINATION_DIR}/${TARGET_RDIR}"
+	#echo "THE_MOVIE_DIRECTORY:${THE_MOVIE_DIRECTORY}"
+	#echo "RELPATH:${RELPATH}"
+#
+	mkdir -p ${DESTINATION_DIR}/${TARGET_RDIR} 1>/dev/null 2>/dev/null
+	cd "${DESTINATION_DIR}/${TARGET_RDIR}" || die "TARGET_RDIR cannot change CWD:${DESTINATION_DIR}/${TARGET_RDIR}" 31
+	NONO=$(argSwitch "-n --nono")
+	if [ "${NONO}" -gt "0" ]; then
+		echo "CWD should be: ${DESTINATION_DIR}/${TARGET_RDIR} "
+		echo "ln -s ${RELPATH} ./"
+	else
+		ln -s ${RELPATH} ./
+	fi
+}
+
+function ln_By_Genre(){
+	THE_MOVIE_DIRECTORY="$1"
+	DESTINATION_DIR="$2"
+	#
+	OMDB="${THE_MOVIE_DIRECTORY}/omdb.json"
+	stat ${OMDB} 1>/dev/null 2>/dev/null || die "omdb.json not found in ${THE_MOVIE_DIRECTORY}" 1
+	GENRES=$(cat "${OMDB}" | jq -r '.Genre')
+	if [ -z "${GENRES}" ]; then
+		GENRES="NO-GENRE"
+	fi
+	echo "${GENRES}" | tr ',' '\n' | while IFS= read -r EACH_GENRE
+	do
+		EACH_GENRE_CLEAN="$(echo ${EACH_GENRE} | tr -d -c '[:alnum:]' | awk '{$1=$1};1')"
+		TARGET_RDIR="By_Genre/${EACH_GENRE_CLEAN}"
+		RELPATH=$(get_relative_path "${DESTINATION_DIR}/${TARGET_RDIR}" "${THE_MOVIE_DIRECTORY}")
+		#echo "CWD:DESTINATION_DIR/TARGET_RDIR:${DESTINATION_DIR}/${TARGET_RDIR}"
+		#echo "THE_MOVIE_DIRECTORY:${THE_MOVIE_DIRECTORY}"
+		#echo "RELPATH:${RELPATH}"
+	#
+		mkdir -p ${DESTINATION_DIR}/${TARGET_RDIR} 1>/dev/null 2>/dev/null
+		cd "${DESTINATION_DIR}/${TARGET_RDIR}" || die "TARGET_RDIR cannot change CWD:${DESTINATION_DIR}/${TARGET_RDIR}" 31
+		NONO=$(argSwitch "-n --nono")
+		if [ "${NONO}" -gt "0" ]; then
+			echo "CWD should be: ${DESTINATION_DIR}/${TARGET_RDIR} "
+			echo "ln -s ${RELPATH} ./"
+		else
+			ln -s ${RELPATH} ./
+		fi
+	done
+}
+
+
+ln_By_Title "${THE_MOVIE_DIRECTORY}" "${DESTINATION_DIR}"
+ln_By_Letter "${THE_MOVIE_DIRECTORY}" "${DESTINATION_DIR}"
+ln_By_Year "${THE_MOVIE_DIRECTORY}" "${DESTINATION_DIR}"
+ln_By_Rating "${THE_MOVIE_DIRECTORY}" "${DESTINATION_DIR}"
+ln_By_Genre "${THE_MOVIE_DIRECTORY}" "${DESTINATION_DIR}"
+echo -ne "."
+
+exit
+
+
+
+FULL_DNAME="$(dirname ${OMDB})"
+DNAME="$(basename ${FULL_DNAME})"
+
+#if filename need to be quoted
+SAFE_DNAME=$(printf '%q' "${DNAME}")
+
+TITLE=$(cat "${OMDB}" | jq -r '.Title')
+YEAR=$(cat "${OMDB}" | jq -r '.Year'| grep -oP '^[0-9][0-9][0-9][0-9]')
+GENRES=$(cat "${OMDB}" | jq -r '.Genre')
+
+
+
+#compare filenames
+
+
+#compare year
+#if [ "${DYEAR}" = "${YEAR}" ]; then
+#  YC="OK"
+#else
+#  YC="NO"
+#fi
+
+PROPOSED_DNAME=$(echo "${TITLE} (${YEAR})")
+PROPOSED_DNAME_CONV=$(echo "${PROPOSED_DNAME}"| tr -c '[:alnum:][:punct:]' '_' | sed "s/'//g" | sed 's/"//g;s/`//g;s/:/_/g;s/;/_/g;s/,/_/g;s/_$//g;s/\//-/g;s/__*/_/g')
+#echo -e "->${PROPOSED_DNAME_CONV}->${YC}"
+rename $2 "s/${SAFE_DNAME}/${PROPOSED_DNAME_CONV}/g" "${FULL_DNAME}"
